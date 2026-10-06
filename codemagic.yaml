@@ -9,6 +9,7 @@ workflows:
             -project WebDriverAgent.xcodeproj \
             -scheme WebDriverAgentRunner \
             -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -configuration Release \
             -derivedDataPath ./build \
             CODE_SIGNING_ALLOWED=NO \
@@ -17,7 +18,24 @@ workflows:
       - name: Package IPA
         script: |
           mkdir -p Payload
-          cp -r ./build/Build/Products/Release-iphoneos/WebDriverAgentRunner-Runner.app Payload/
+          cp -R ./build/Build/Products/Release-iphoneos/WebDriverAgentRunner-Runner.app Payload/
+          
+          TARGET_APP="Payload/WebDriverAgentRunner-Runner.app"
+          
+          # Thin runner executable to pure arm64
+          lipo -thin arm64 "$TARGET_APP/WebDriverAgentRunner-Runner" -output "$TARGET_APP/WebDriverAgentRunner-Runner" || true
+          
+          # Thin nested xctest plugin executable
+          TEST_BUNDLE="$TARGET_APP/PlugIns/WebDriverAgentRunner.xctest/WebDriverAgentRunner"
+          if [ -f "$TEST_BUNDLE" ]; then
+            lipo -thin arm64 "$TEST_BUNDLE" -output "$TEST_BUNDLE" || true
+          fi
+          
+          # Thin any nested dynamic frameworks
+          if [ -d "$TARGET_APP/Frameworks" ]; then
+            find "$TARGET_APP/Frameworks" -type f -perm +111 -exec lipo -thin arm64 {} -output {} \; 2>/dev/null || true
+          fi
+          
           zip -r WebDriverAgentRunner.ipa Payload
     artifacts:
       - WebDriverAgentRunner.ipa
